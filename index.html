@@ -239,7 +239,9 @@
   @media (hover: none) { .kbd-line { display: none; } }
 
   /* ============ 对话框 ============ */
-  dialog { margin: auto; border: 0; padding: 28px 28px 22px; width: min(92vw, 420px); border-radius: 32px; background: var(--surface-high); color: var(--on-surface); box-shadow: 0 16px 48px #0006; }
+  /* 横屏/矮视口下（例如 375px 高的窗口）帮助与成绩对话框会高于可视区，
+     没有高度上限时底部按钮会被裁在屏幕外且无法滚动到 */
+  dialog { margin: auto; border: 0; padding: 28px 28px 22px; width: min(92vw, 420px); max-height: min(86dvh, 720px); overflow-y: auto; overscroll-behavior: contain; border-radius: 32px; background: var(--surface-high); color: var(--on-surface); box-shadow: 0 16px 48px #0006; }
   dialog::backdrop { background: oklch(.1 .02 var(--h) / .45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   dialog[open] { animation: dlgIn .28s cubic-bezier(.2,.9,.3,1.15); }
   dialog[open]::backdrop { animation: fadeIn .25s; }
