@@ -11,10 +11,11 @@
   (function () {
     try {
       var t = localStorage.getItem('ym-theme');
-      if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.dataset.theme = t;
+      /* 只认已知的配色名：脏数据会让 [data-palette] 匹配不上，整套色彩令牌全部失效 */
       var p = localStorage.getItem('ym-palette');
-      if (p) document.documentElement.dataset.palette = p;
+      if (/^(purple|blue|cyan|green|yellow|orange|pink|red)$/.test(p || '')) document.documentElement.dataset.palette = p;
     } catch (e) {}
   })();
 </script>
@@ -538,15 +539,17 @@
 
   /* ---------- 主题 / 配色 ---------- */
   const themeBtn = $('#themeBtn');
-  function applyTheme(t) {
+  /* persist 为真时才写入 localStorage：首次加载跟随系统配色时若也写库，
+     之后就再也跟不上系统的深浅色切换了 */
+  function applyTheme(t, persist) {
     root.dataset.theme = t;
-    store.set('ym-theme', t);
+    if (persist) store.set('ym-theme', t);
     themeBtn.innerHTML = t === 'dark' ? ICON.sun : ICON.moon;
     themeBtn.querySelector('svg').classList.add('ico');
     const m = document.querySelector('meta[name=theme-color]');
     requestAnimationFrame(() => { m.content = getComputedStyle(document.body).backgroundColor || '#fff'; });
   }
-  themeBtn.addEventListener('click', () => applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+  themeBtn.addEventListener('click', () => applyTheme(root.dataset.theme === 'dark' ? 'light' : 'dark', true));
 
   $('#paletteBtn').innerHTML = ICON.palette;
   $('#menuBtn').innerHTML = ICON.menu;
@@ -556,11 +559,13 @@
     b.className = 'swatch'; b.dataset.p = name; b.style.setProperty('--sh', hue);
     b.setAttribute('aria-label', '配色 ' + name);
     b.innerHTML = ICON.check;
-    b.addEventListener('click', () => applyPalette(name));
+    b.addEventListener('click', () => applyPalette(name, true));
     swatchBox.append(b);
   });
-  function applyPalette(p) {
-    root.dataset.palette = p; store.set('ym-palette', p);
+  function applyPalette(p, persist) {
+    if (!PALETTES.some(([n]) => n === p)) p = 'purple';
+    root.dataset.palette = p;
+    if (persist) store.set('ym-palette', p);
     swatchBox.querySelectorAll('.swatch').forEach(s => s.classList.toggle('on', s.dataset.p === p));
     requestAnimationFrame(() => { document.querySelector('meta[name=theme-color]').content = getComputedStyle(document.body).backgroundColor; });
   }
@@ -653,7 +658,22 @@
   }
 
   /* ---------- 记录 ---------- */
-  const loadBest = () => { try { return JSON.parse(store.get('ym-best', '{}')) || {}; } catch (e) { return {}; } };
+  /* 成绩存档做过校验：损坏或被外部写入的脏数据不能让面板显示 NaN:NaN / 通关 undefined 次，
+     时间本来就不合法的条目直接丢弃，按「暂无记录」处理 */
+  const loadBest = () => {
+    let raw;
+    try { raw = JSON.parse(store.get('ym-best', '{}')); } catch (e) { return {}; }
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    DIFFS.forEach(d => {
+      const r = raw[d.id];
+      if (!r || typeof r !== 'object') return;
+      const time = Number(r.time), wins = Number(r.wins);
+      if (!isFinite(time) || time < 0) return;
+      out[d.id] = { time, wins: isFinite(wins) && wins > 0 ? Math.floor(wins) : 0 };
+    });
+    return out;
+  };
   function showHelp() {
     showDialog({
       icon: ICON.info, title: '玩法说明',
