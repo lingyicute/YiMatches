@@ -674,7 +674,7 @@
   let rows, cols, grid, cells, remaining;
   let selected = null, cursor = null, history = [];
   let hintsLeft, shufflesLeft, elapsed = 0, started = false, over = false, hintPair = null, hintTimer = null;
-  let lastTick = 0;
+  let lastTick = 0, autoShuffleTimer = null;
 
   /* 寻路 */
   const inExt = (r, c) => r >= -1 && r <= rows && c >= -1 && c <= cols;
@@ -758,7 +758,8 @@
   }
 
   function newGame() {
-    clearTimeout(hintTimer);
+    clearTimeout(hintTimer); clearTimeout(autoShuffleTimer);
+    autoShuffleTimer = null;
     buildBoard();
     const pairs = cols * rows / 2;
     const types = shuffleArr(EMOJIS.map((_, i) => i)).slice(0, diff.types);
@@ -856,12 +857,15 @@
       setTimeout(win, 450);
       return;
     }
-    if (!findHint()) setTimeout(() => { doShuffle(); toast('无路可走，已自动重排'); }, 420);
+    if (!findHint()) {
+      clearTimeout(autoShuffleTimer);
+      autoShuffleTimer = setTimeout(() => { doShuffle(); toast('无路可走，已自动重排'); }, 420);
+    }
   }
 
   function undo() {
     if (over || !history.length) return;
-    clearHint();
+    clearHint(); clearTimeout(autoShuffleTimer);
     const h = history.pop();
     grid[h.a[0]][h.a[1]] = h.t; grid[h.b[0]][h.b[1]] = h.t; remaining += 2;
     setSelected(null);
@@ -882,6 +886,7 @@
   }
 
   function doShuffle() {
+    clearTimeout(autoShuffleTimer); autoShuffleTimer = null;
     const pos = [], vals = [];
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (grid[r][c] >= 0) { pos.push([r, c]); vals.push(grid[r][c]); }
     for (let i = 0; i < 300; i++) {
@@ -901,6 +906,8 @@
   }
 
   function win() {
+    /* 结算走的是 450ms 延迟定时器，这期间可能已经重开或换了难度：过期的结算直接丢弃 */
+    if (!over || remaining !== 0) return;
     const best = loadBest(), prev = best[diff.id];
     const t = Math.round(elapsed);
     const isNew = !prev || t < prev.time;
