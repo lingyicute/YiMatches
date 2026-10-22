@@ -94,6 +94,8 @@
     overflow-x: hidden;
   }
   button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+  /* 键盘焦点环：随主题取色，比 UA 默认的黑色描边在深色模式下可读 */
+  :focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
   svg { display: block; }
   .ico { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .ico.fill { fill: currentColor; stroke: none; }
@@ -306,6 +308,12 @@
   }
 
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+  /* 上面这条统一压缩时长的规则会把「连线」和「提示脉冲」定格在不可见状态：
+     减弱动效时改用静态样式表达同样的信息（连线由 JS 在 600ms 后移除） */
+  @media (prefers-reduced-motion: reduce) {
+    .lines path { animation: none !important; opacity: .95; }
+    .cell.hint .tile { animation: none !important; box-shadow: 0 0 0 4px var(--tertiary), var(--shadow); }
+  }
 </style>
 <style>
 @font-face{
