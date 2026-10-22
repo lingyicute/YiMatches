@@ -716,6 +716,25 @@
     }
     return null;
   }
+  /* 兜底布局：把一对同图案换到相邻的 (0,0)、(0,1)。相邻必连通，所以排完一定有解，
+     用于随机打乱多次仍未凑出可消对子的极端情况（此时不清盘，玩家不至于卡死）。 */
+  function forcePlayablePair() {
+    if (cols < 2) return;
+    const swapV = (p, q) => { const t = grid[p[0]][p[1]]; grid[p[0]][p[1]] = grid[q[0]][q[1]]; grid[q[0]][q[1]] = t; };
+    const seen = new Map();
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const v = grid[r][c]; if (v < 0) continue;
+      if (!seen.has(v)) { seen.set(v, [r, c]); continue; }
+      swapV(seen.get(v), [0, 0]);
+      let q = null;
+      for (let y = 0; y < rows && !q; y++) for (let x = 0; x < cols; x++) {
+        if ((y === 0 && x === 0) || grid[y][x] !== v) continue;
+        q = [y, x]; break;
+      }
+      if (q && !(q[0] === 0 && q[1] === 1)) swapV(q, [0, 1]);
+      return;
+    }
+  }
 
   /* 渲染 */
   const cellAt = (r, c) => cells[r * cols + c];
@@ -765,12 +784,14 @@
     const types = shuffleArr(EMOJIS.map((_, i) => i)).slice(0, diff.types);
     const flat = [];
     for (let i = 0; i < pairs; i++) flat.push(types[i % types.length], types[i % types.length]);
-    let tries = 0;
+    let tries = 0, ok = false;
     do {
       shuffleArr(flat);
       grid = Array.from({ length: rows }, (_, r) => flat.slice(r * cols, r * cols + cols));
+      ok = !!findHint();
       tries++;
-    } while (!findHint() && tries < 60);
+    } while (!ok && tries < 60);
+    if (!ok) forcePlayablePair();
     remaining = cols * rows;
     selected = null; cursor = null; hintPair = null; history = [];
     hintsLeft = diff.hints; shufflesLeft = diff.shuffles;
@@ -889,11 +910,13 @@
     clearTimeout(autoShuffleTimer); autoShuffleTimer = null;
     const pos = [], vals = [];
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (grid[r][c] >= 0) { pos.push([r, c]); vals.push(grid[r][c]); }
-    for (let i = 0; i < 300; i++) {
+    let ok = false;
+    for (let i = 0; i < 300 && !ok; i++) {
       shuffleArr(vals);
       pos.forEach(([r, c], k) => { grid[r][c] = vals[k]; });
-      if (findHint()) break;
+      ok = !!findHint();
     }
+    if (!ok) forcePlayablePair();
     history = []; selected = null; hintPair = null; clearTimeout(hintTimer);
     paintAll(); updateHud();
     gridEl.classList.remove('shuffling'); void gridEl.offsetWidth; gridEl.classList.add('shuffling');
