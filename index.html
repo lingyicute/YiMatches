@@ -842,6 +842,21 @@
     if (old) paint(old[0], old[1]);
     if (selected) paint(r, c);
   }
+  /* 光标所在的方块被消除后，把光标挪到最近的剩余方块：
+     否则焦点环落在空位上（.cell.empty 的 .tile 是隐藏的），键盘操作看起来像丢了光标 */
+  function fixCursor() {
+    if (!cursor || grid[cursor[0]][cursor[1]] >= 0) return;
+    let best = null, bd = Infinity;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      if (grid[r][c] < 0) continue;
+      const d = Math.abs(r - cursor[0]) + Math.abs(c - cursor[1]);
+      if (d < bd) { bd = d; best = [r, c]; }
+    }
+    cursor = best;
+    if (cursor) paint(cursor[0], cursor[1]);
+    else gridEl.classList.remove('kb');   /* 清盘后不再显示光标 */
+  }
+
   function shakeCell(r, c) {
     const el = cellAt(r, c); el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
     setTimeout(() => el.classList.remove('shake'), 360);
@@ -870,6 +885,7 @@
     selected = null; // 不重绘，保留消除动画
     drawPath(path);
     [a, b].forEach(p => { const el = cellAt(p[0], p[1]); el.classList.remove('sel', 'cur'); el.classList.add('vanish'); });
+    fixCursor();
     setTimeout(() => { paint(a[0], a[1]); paint(b[0], b[1]); }, 340);
     updateHud();
     if (remaining === 0) {
@@ -961,7 +977,7 @@
   function moveCursor(dr, dc) {
     gridEl.classList.add('kb');
     const old = cursor;
-    if (!cursor || grid[cursor[0]][cursor[1]] < 0 && false) {
+    if (!cursor) {
       // 初始化为最靠近中心的方块
       let best = null, bd = 1e9;
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (grid[r][c] >= 0) {
