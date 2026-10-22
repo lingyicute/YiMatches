@@ -241,8 +241,16 @@
   dialog::backdrop { background: oklch(.1 .02 var(--h) / .45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   dialog[open] { animation: dlgIn .28s cubic-bezier(.2,.9,.3,1.15); }
   dialog[open]::backdrop { animation: fadeIn .25s; }
+  /* 关闭动画：由 JS 加上 .closing，动画结束后才真正 dlg.close() */
+  dialog[open].closing { animation: dlgOut .22s cubic-bezier(.4,0,1,1) forwards; pointer-events: none; }
+  dialog[open].closing::backdrop { animation: fadeOut .22s ease forwards; }
   @keyframes dlgIn { from { opacity: 0; transform: scale(.88) translateY(16px); } to { opacity: 1; transform: none; } }
-  @keyframes fadeIn { from { opacity: 0; } }
+  @keyframes fadeIn { from { opacity: 0; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); } }
+  @keyframes dlgOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.9) translateY(10px); } }
+  @keyframes fadeOut {
+    from { opacity: 1; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    to { opacity: 0; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
+  }
   .dlg-icon { width: 68px; height: 68px; margin: 0 auto 14px; border-radius: 24px; background: var(--primary-container); color: var(--on-primary-container); display: grid; place-items: center; }
   .dlg-icon .ico { width: 34px; height: 34px; }
   dialog h2 { text-align: center; font-size: 24px; font-weight: 700; margin-bottom: 14px; }
@@ -570,7 +578,46 @@
 
   /* ---------- 对话框 / Toast ---------- */
   const dlg = $('#dlg');
+  const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const OUT_MS = 220;   /* 与 CSS 中 dlgOut 的时长保持一致 */
+  let dlgTimer = null, dlgAfter = null, dlgOnEnd = null;
+
+  /* 复位关闭过程中的临时状态（清理计时器与 animationend 监听） */
+  function resetClose() {
+    clearTimeout(dlgTimer); dlgTimer = null;
+    if (dlgOnEnd) { dlg.removeEventListener('animationend', dlgOnEnd); dlgOnEnd = null; }
+    dlg.classList.remove('closing');
+  }
+
+  /* 关闭对话框：先播放关闭动画，动画结束后再真正 close() */
+  function closeDialog(after) {
+    if (dlg.classList.contains('closing')) {
+      /* 已在关闭中：把新回调挂到同一批里，避免被覆盖丢失 */
+      if (after) { const prev = dlgAfter; dlgAfter = prev ? () => { prev(); after(); } : after; }
+      return;
+    }
+    dlgAfter = after || null;
+    if (!dlg.open) { const f = dlgAfter; dlgAfter = null; f && f(); return; }
+    const ms = REDUCED.matches ? 0 : OUT_MS;
+    const done = () => {
+      resetClose();
+      if (dlg.open) dlg.close();
+      const f = dlgAfter; dlgAfter = null; f && f();
+    };
+    dlgOnEnd = e => { if (e.target === dlg && e.animationName === 'dlgOut') done(); };
+    dlg.classList.add('closing');
+    dlg.addEventListener('animationend', dlgOnEnd);
+    dlgTimer = setTimeout(done, ms + 80);   /* 兜底：动画事件未触发时也要收尾 */
+  }
+  /* 原生关闭路径（Esc / 表单 method=dialog 等）也走同一条关闭动画 */
+  dlg.addEventListener('cancel', e => {
+    if (dlg.classList.contains('closing')) return;   /* 动画中再次 Esc 忽略 */
+    e.preventDefault();
+    closeDialog();
+  });
+
   function showDialog({ icon, title, body, actions }) {
+    resetClose(); dlgAfter = null;
     $('#dlgIcon').innerHTML = icon;
     $('#dlgTitle').textContent = title;
     $('#dlgBody').innerHTML = body;
@@ -578,12 +625,17 @@
     actions.forEach(a => {
       const b = document.createElement('button');
       b.className = 'btn ' + (a.primary ? 'primary' : 'text'); b.textContent = a.label;
-      b.addEventListener('click', () => { dlg.close(); a.onClick && a.onClick(); });
+      b.addEventListener('click', () => closeDialog(a.onClick));
       box.append(b);
     });
-    if (!dlg.open) dlg.showModal();
+    if (!dlg.open) {
+      dlg.showModal();
+    } else {
+      /* 已是打开状态：重新触发入场动画，避免内容"硬切" */
+      dlg.style.animation = 'none'; void dlg.offsetWidth; dlg.style.animation = '';
+    }
   }
-  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  dlg.addEventListener('click', e => { if (e.target === dlg) closeDialog(); });
   let toastTimer;
   function toast(msg) {
     const t = $('#toast'); t.textContent = msg; t.classList.add('show');
