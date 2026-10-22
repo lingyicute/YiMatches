@@ -793,12 +793,15 @@
     });
   }
 
-  /* 计时 */
-  setInterval(() => {
+  /* 计时：把「上一拍到现在」的余量累加进 elapsed */
+  function syncElapsed() {
     const now = performance.now();
-    if (started && !over && !document.hidden) { elapsed += (now - lastTick) / 1000; timeVal.textContent = fmt(elapsed); }
+    if (started && !over && !document.hidden) elapsed += (now - lastTick) / 1000;
     lastTick = now;
-  }, 250);
+  }
+  setInterval(() => { syncElapsed(); timeVal.textContent = fmt(elapsed); }, 250);
+  /* 后台标签页的定时器会被降频甚至冻结，切回来时先对齐基准，避免把整段后台时间算进成绩 */
+  document.addEventListener('visibilitychange', () => { lastTick = performance.now(); });
 
   /* 交互 */
   function clearHint() {
@@ -847,7 +850,12 @@
     [a, b].forEach(p => { const el = cellAt(p[0], p[1]); el.classList.remove('sel', 'cur'); el.classList.add('vanish'); });
     setTimeout(() => { paint(a[0], a[1]); paint(b[0], b[1]); }, 340);
     updateHud();
-    if (remaining === 0) { setTimeout(win, 450); over = true; updateHud(); return; }
+    if (remaining === 0) {
+      syncElapsed();   /* 封盘前补齐最后一拍（最多 250ms）的计时，成绩才准 */
+      over = true; updateHud();
+      setTimeout(win, 450);
+      return;
+    }
     if (!findHint()) setTimeout(() => { doShuffle(); toast('无路可走，已自动重排'); }, 420);
   }
 
